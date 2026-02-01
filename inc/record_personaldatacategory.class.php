@@ -236,58 +236,67 @@ class Record_PersonalDataCategory extends CommonDBRelation
         return $forbidden;
     }
 
-    public function isAllowedToAdd($data): bool
+    public function isAllowedToAdd(array $data): bool
     {
         global $DB;
 
         $result = 0;
-        $msg = '';
+        $msg    = '';
+
+        $categoryId = (int)$data['plugin_gdprropa_personaldatacategories_id'];
+        $recordId   = (int)$data['plugin_gdprropa_records_id'];
 
         $ancestors = getAncestorsOf(
             PersonalDataCategory::getTable(),
-            $data['plugin_gdprropa_personaldatacategories_id']
+            $categoryId
         );
+
         $sons = getSonsOf(
             PersonalDataCategory::getTable(),
-            $data['plugin_gdprropa_personaldatacategories_id']
+            $categoryId
         );
         array_shift($sons);
 
-        $pdc = $DB->query(
-            'SELECT `plugin_gdprropa_personaldatacategories_id` FROM `' .
-            $this->getTable() . '` WHERE `plugin_gdprropa_records_id` = ' . $data['plugin_gdprropa_records_id'] . ' '
-        );
-        while ($item = $DB->fetch_assoc($pdc)) {
-            if (
-                $data['plugin_gdprropa_personaldatacategories_id'] == $item['plugin_gdprropa_personaldatacategories_id']
-            ) {
+        $iterator = $DB->request([
+            'SELECT' => ['plugin_gdprropa_personaldatacategories_id'],
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [
+                'plugin_gdprropa_records_id' => $recordId
+            ]
+        ]);
+
+        foreach ($iterator as $item) {
+            $existingCategoryId = (int)$item['plugin_gdprropa_personaldatacategories_id'];
+
+            if ($categoryId === $existingCategoryId) {
                 $result = 1;
                 $msg = __('Selected item is already on list.', 'gdprropa');
                 break;
-            } else {
-                if (in_array($item['plugin_gdprropa_personaldatacategories_id'], $ancestors)) {
-                    $result = 2;
-                    $msg = __('Cannot add child item if parent is already on the list.', 'gdprropa');
-                    break;
-                } else {
-                    if (count($sons) && in_array($item['plugin_gdprropa_personaldatacategories_id'], $sons)) {
-                        $result = 3;
-                        $msg = __(
-                            'Cannot add Parent item if child is already on the list.' .
-                            '<br>Remove child items before adding parent.',
-                            'gdprropa'
-                        );
-                        break;
-                    }
-                }
+            }
+
+            if (in_array($existingCategoryId, $ancestors, true)) {
+                $result = 2;
+                $msg = __('Cannot add child item if parent is already on the list.', 'gdprropa');
+                break;
+            }
+
+            if (!empty($sons) && in_array($existingCategoryId, $sons, true)) {
+                $result = 3;
+                $msg = __(
+                    'Cannot add Parent item if child is already on the list.' .
+                    '<br>Remove child items before adding parent.',
+                    'gdprropa'
+                );
+                break;
             }
         }
 
-        if ($result) {
-            Session::addMessageAfterRedirect($msg, true);
+        if ($result !== 0) {
+            Session::addMessageAfterRedirect($msg, false, ERROR);
+            return false;
         }
 
-        return $result == 0;
+        return true;
     }
 
     public static function rawSearchOptionsToAdd(): array
